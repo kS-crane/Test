@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-name: PR Benchmark
-=======
 name: PR Bundle Analysis
->>>>>>> vuln
 
 on:
   pull_request_target:
@@ -26,31 +22,18 @@ jobs:
       CI: true
 
     steps:
-      # ---------------------------------------------------------------
-      # 1. Checkout PR code for analysis
-      # ---------------------------------------------------------------
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      # ---------------------------------------------------------------
-      # 2. Checkout base branch for comparison
-      # ---------------------------------------------------------------
       - name: Checkout base for diff
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: __base
 
-      # ---------------------------------------------------------------
-      # 3. Security: verify critical file integrity
-      #
-      #    Every file that contributes to install, build, test, or lint
-      #    is hashed against a known-good value. If anything has been
-      #    tampered with, the pipeline aborts immediately.
-      # ---------------------------------------------------------------
       - name: Verify file integrity
         run: |
           echo "🔒 Running integrity verification..."
@@ -177,35 +160,11 @@ jobs:
           echo "🔒 ALL INTEGRITY CHECKS PASSED"
           echo "══════════════════════════════════════════════"
 
-      # ---------------------------------------------------------------
-      # 4. Setup Node.js
-      # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-<<<<<<< HEAD
-      - name: Install dependencies
-        run: npm install
-
-      - name: Run benchmark build
-        run: npm run build
-
-      - name: Post benchmark results
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: '✅ Benchmark completed successfully.'
-            });
-=======
-      # ---------------------------------------------------------------
-      # 5. Cache npm packages
-      # ---------------------------------------------------------------
       - name: Restore npm cache
         uses: actions/cache@v4
         with:
@@ -214,49 +173,30 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-
 
-      # ---------------------------------------------------------------
-      # 6. Install dependencies — ignore ALL lifecycle scripts
-      #
-      #    --ignore-scripts prevents preinstall, install, postinstall
-      #    hooks from firing during dependency resolution. This blocks
-      #    malicious packages from executing code at install time.
-      # ---------------------------------------------------------------
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies (scripts disabled)..."
           npm ci --ignore-scripts --prefer-offline
           echo "✅ Dependencies installed."
 
-      # ---------------------------------------------------------------
-      # 7. Lint
-      # ---------------------------------------------------------------
       - name: Lint check
         run: |
           echo "🔍 Running linter..."
           npm run lint
           echo "✅ Lint passed."
 
-      # ---------------------------------------------------------------
-      # 8. Build the project
-      # ---------------------------------------------------------------
       - name: Build project
         run: |
           echo "🔨 Building project..."
           npm run build
           echo "✅ Build complete."
 
-      # ---------------------------------------------------------------
-      # 9. Run tests
-      # ---------------------------------------------------------------
       - name: Run tests
         run: |
           echo "🧪 Running tests..."
           npm test
           echo "✅ Tests passed."
 
-      # ---------------------------------------------------------------
-      # 10. Analyze bundle size
-      # ---------------------------------------------------------------
       - name: Calculate bundle sizes
         id: bundle
         run: |
@@ -290,9 +230,6 @@ jobs:
             echo "pct=0" >> "$GITHUB_OUTPUT"
           fi
 
-      # ---------------------------------------------------------------
-      # 11. Post results as PR comment
-      # ---------------------------------------------------------------
       - name: Post bundle analysis
         uses: actions/github-script@v7
         with:
@@ -348,4 +285,3 @@ jobs:
                 body,
               });
             }
->>>>>>> vuln
