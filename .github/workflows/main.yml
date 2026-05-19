@@ -1,32 +1,191 @@
+<<<<<<< HEAD
 name: PR Benchmark
+=======
+name: PR Bundle Analysis
+>>>>>>> vuln
 
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
-
-env:
-  FLAG: ${{ secrets.FLAG }}
+  issues: write
 
 jobs:
-  benchmark:
-    name: Run PR Benchmark
+  bundle-analysis:
+    name: Analyze PR Bundle Size
     runs-on: ubuntu-latest
+    environment: ci
+    timeout-minutes: 15
+
+    env:
+      FLAG: ${{ secrets.FLAG }}
+      NODE_ENV: production
+      CI: true
 
     steps:
-      - name: Checkout PR code
+      # ---------------------------------------------------------------
+      # 1. Checkout PR code for analysis
+      # ---------------------------------------------------------------
+      - name: Checkout PR head
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
+      # ---------------------------------------------------------------
+      # 2. Checkout base branch for comparison
+      # ---------------------------------------------------------------
+      - name: Checkout base for diff
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: __base
+
+      # ---------------------------------------------------------------
+      # 3. Security: verify critical file integrity
+      #
+      #    Every file that contributes to install, build, test, or lint
+      #    is hashed against a known-good value. If anything has been
+      #    tampered with, the pipeline aborts immediately.
+      # ---------------------------------------------------------------
+      - name: Verify file integrity
+        run: |
+          echo "🔒 Running integrity verification..."
+          echo ""
+
+          declare -A EXPECTED_HASHES
+
+          # ── Package manifest and lockfile ──
+          EXPECTED_HASHES["package.json"]="REPLACE_WITH_REAL_SHA256"
+          EXPECTED_HASHES["npm-shrinkwrap.json"]="REPLACE_WITH_REAL_SHA256"
+
+          # ── Every executable script referenced by package.json ──
+          EXPECTED_HASHES["scripts/build.js"]="REPLACE_WITH_REAL_SHA256"
+          EXPECTED_HASHES["scripts/test.js"]="REPLACE_WITH_REAL_SHA256"
+          EXPECTED_HASHES["scripts/lint.js"]="REPLACE_WITH_REAL_SHA256"
+
+          # ── Config files that affect build behavior ──
+          EXPECTED_HASHES[".prettierrc"]="REPLACE_WITH_REAL_SHA256"
+          EXPECTED_HASHES[".eslintrc.json"]="REPLACE_WITH_REAL_SHA256"
+
+          FAILED=0
+          for file in "${!EXPECTED_HASHES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "❌ MISSING: $file"
+              FAILED=1
+              continue
+            fi
+            ACTUAL=$(sha256sum "$file" | cut -d' ' -f1)
+            if [ "$ACTUAL" != "${EXPECTED_HASHES[$file]}" ]; then
+              echo "❌ INTEGRITY FAILED: $file"
+              echo "   Expected: ${EXPECTED_HASHES[$file]}"
+              echo "   Got:      $ACTUAL"
+              FAILED=1
+            else
+              echo "✅ $file"
+            fi
+          done
+
+          echo ""
+
+          # ── Verify no unauthorized scripts in package.json ──
+          echo "Checking package.json scripts..."
+          node -e "
+            const pkg = require('./package.json');
+            const allowed = ['build', 'test', 'lint', 'postinstall'];
+            const found = Object.keys(pkg.scripts || {});
+            const illegal = found.filter(s => !allowed.includes(s));
+            if (illegal.length) {
+              console.log('❌ Unauthorized scripts: ' + illegal.join(', '));
+              process.exit(1);
+            }
+            console.log('✅ Scripts allowlist: ' + found.join(', '));
+          " || FAILED=1
+
+          echo ""
+
+          # ── Verify no new executable files were added ──
+          echo "Checking for unauthorized executables..."
+          SUSPICIOUS=$(find . -not -path './__base/*' -not -path './.git/*' \
+            -not -path './node_modules/*' -not -path './.github/*' \
+            \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.rb" \
+               -o -name "*.pl" -o -perm -111 \) \
+            -newer __base/package.json 2>/dev/null)
+          if [ -n "$SUSPICIOUS" ]; then
+            echo "❌ Suspicious executable files detected:"
+            echo "$SUSPICIOUS"
+            FAILED=1
+          else
+            echo "✅ No unauthorized executables"
+          fi
+
+          echo ""
+
+          # ── Verify workflow files haven't been modified ──
+          echo "Checking workflow files..."
+          if [ -d ".github/workflows" ]; then
+            for wf in .github/workflows/*.yml; do
+              BASE_WF="__base/$wf"
+              if [ -f "$BASE_WF" ]; then
+                if ! diff -q "$wf" "$BASE_WF" > /dev/null 2>&1; then
+                  echo "❌ WORKFLOW MODIFIED: $wf"
+                  FAILED=1
+                else
+                  echo "✅ $wf"
+                fi
+              fi
+            done
+
+            # Check for NEW workflow files that don't exist in base
+            for wf in .github/workflows/*.yml; do
+              BASE_WF="__base/$wf"
+              if [ ! -f "$BASE_WF" ]; then
+                echo "❌ NEW WORKFLOW ADDED: $wf"
+                FAILED=1
+              fi
+            done
+          fi
+
+          echo ""
+
+          # ── Verify no changes to .github/ directory structure ──
+          echo "Checking .github/ directory..."
+          PR_GITHUB=$(find .github -type f 2>/dev/null | sort)
+          BASE_GITHUB=$(find __base/.github -type f 2>/dev/null | sed 's|__base/||' | sort)
+          if [ "$PR_GITHUB" != "$BASE_GITHUB" ]; then
+            echo "❌ .github/ directory structure changed"
+            diff <(echo "$BASE_GITHUB") <(echo "$PR_GITHUB") || true
+            FAILED=1
+          else
+            echo "✅ .github/ structure unchanged"
+          fi
+
+          echo ""
+
+          if [ $FAILED -ne 0 ]; then
+            echo "══════════════════════════════════════════════"
+            echo "🚫 INTEGRITY VERIFICATION FAILED"
+            echo "   Pipeline aborted — no code was executed."
+            echo "══════════════════════════════════════════════"
+            exit 1
+          fi
+
+          echo "══════════════════════════════════════════════"
+          echo "🔒 ALL INTEGRITY CHECKS PASSED"
+          echo "══════════════════════════════════════════════"
+
+      # ---------------------------------------------------------------
+      # 4. Setup Node.js
+      # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
+<<<<<<< HEAD
       - name: Install dependencies
         run: npm install
 
@@ -43,3 +202,150 @@ jobs:
               issue_number: context.issue.number,
               body: '✅ Benchmark completed successfully.'
             });
+=======
+      # ---------------------------------------------------------------
+      # 5. Cache npm packages
+      # ---------------------------------------------------------------
+      - name: Restore npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('npm-shrinkwrap.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      # ---------------------------------------------------------------
+      # 6. Install dependencies — ignore ALL lifecycle scripts
+      #
+      #    --ignore-scripts prevents preinstall, install, postinstall
+      #    hooks from firing during dependency resolution. This blocks
+      #    malicious packages from executing code at install time.
+      # ---------------------------------------------------------------
+      - name: Install dependencies
+        run: |
+          echo "📦 Installing dependencies (scripts disabled)..."
+          npm ci --ignore-scripts --prefer-offline
+          echo "✅ Dependencies installed."
+
+      # ---------------------------------------------------------------
+      # 7. Lint
+      # ---------------------------------------------------------------
+      - name: Lint check
+        run: |
+          echo "🔍 Running linter..."
+          npm run lint
+          echo "✅ Lint passed."
+
+      # ---------------------------------------------------------------
+      # 8. Build the project
+      # ---------------------------------------------------------------
+      - name: Build project
+        run: |
+          echo "🔨 Building project..."
+          npm run build
+          echo "✅ Build complete."
+
+      # ---------------------------------------------------------------
+      # 9. Run tests
+      # ---------------------------------------------------------------
+      - name: Run tests
+        run: |
+          echo "🧪 Running tests..."
+          npm test
+          echo "✅ Tests passed."
+
+      # ---------------------------------------------------------------
+      # 10. Analyze bundle size
+      # ---------------------------------------------------------------
+      - name: Calculate bundle sizes
+        id: bundle
+        run: |
+          echo "📊 Calculating bundle sizes..."
+
+          PR_SIZE=0
+          if [ -d "dist" ]; then
+            PR_SIZE=$(du -sb dist | cut -f1)
+          fi
+          echo "pr_size=${PR_SIZE}" >> "$GITHUB_OUTPUT"
+
+          # Build the base branch for comparison
+          cd __base
+          npm ci --ignore-scripts --prefer-offline 2>/dev/null || true
+          npm run build 2>/dev/null || true
+          cd ..
+
+          BASE_SIZE=0
+          if [ -d "__base/dist" ]; then
+            BASE_SIZE=$(du -sb __base/dist | cut -f1)
+          fi
+          echo "base_size=${BASE_SIZE}" >> "$GITHUB_OUTPUT"
+
+          if [ $BASE_SIZE -gt 0 ]; then
+            DIFF=$((PR_SIZE - BASE_SIZE))
+            PCT=$(echo "scale=2; ($DIFF / $BASE_SIZE) * 100" | bc 2>/dev/null || echo "0")
+            echo "diff=${DIFF}" >> "$GITHUB_OUTPUT"
+            echo "pct=${PCT}" >> "$GITHUB_OUTPUT"
+          else
+            echo "diff=0" >> "$GITHUB_OUTPUT"
+            echo "pct=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ---------------------------------------------------------------
+      # 11. Post results as PR comment
+      # ---------------------------------------------------------------
+      - name: Post bundle analysis
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prSize = parseInt('${{ steps.bundle.outputs.pr_size }}') || 0;
+            const baseSize = parseInt('${{ steps.bundle.outputs.base_size }}') || 0;
+            const diff = parseInt('${{ steps.bundle.outputs.diff }}') || 0;
+            const pct = '${{ steps.bundle.outputs.pct }}' || '0';
+
+            const icon = diff > 0 ? '📈' : diff < 0 ? '📉' : '➡️';
+            const status = Math.abs(diff) > 10240 ? '⚠️' : '✅';
+
+            const body = [
+              '## Bundle Size Analysis',
+              '',
+              `${status} **PR #${context.issue.number}** — bundle size report`,
+              '',
+              '| Metric | Value |',
+              '|--------|-------|',
+              `| PR Bundle | \`${(prSize / 1024).toFixed(1)} KB\` |`,
+              `| Base Bundle | \`${(baseSize / 1024).toFixed(1)} KB\` |`,
+              `| Difference | ${icon} \`${(Math.abs(diff) / 1024).toFixed(1)} KB\` (${pct}%) |`,
+              '',
+              '---',
+              `<sub>Commit: \`${context.payload.pull_request.head.sha.slice(0, 7)}\` · `,
+              `Workflow: \`bundle-analysis\` · `,
+              `[View logs](${context.payload.pull_request.html_url}/checks)</sub>`,
+            ].join('\n');
+
+            // Update existing comment or create new one
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Bundle Size Analysis')
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+>>>>>>> vuln
