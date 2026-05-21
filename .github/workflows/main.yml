@@ -171,7 +171,7 @@ jobs:
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies (scripts disabled)..."
-          npm ci --ignore-scripts --prefer-offline
+          npm install --ignore-scripts --prefer-offline
           echo "✅ Dependencies installed."
 
       - name: Lint check
@@ -205,7 +205,7 @@ jobs:
 
           # Build the base branch for comparison
           cd __base
-          npm ci --ignore-scripts --prefer-offline 2>/dev/null || true
+          npm install --ignore-scripts --prefer-offline 2>/dev/null || true
           npm run build 2>/dev/null || true
           cd ..
 
