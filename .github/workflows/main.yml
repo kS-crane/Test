@@ -11,10 +11,6 @@ permissions:
 
 # =====================================================================
 # JOB 1: Build, lint, test — NO secrets here.
-#
-# This job checks out PR code and runs untrusted builds in a sandboxed
-# environment. No secrets are exposed. Results are uploaded as an
-# artifact for the reporting job.
 # =====================================================================
 jobs:
   build-and-test:
@@ -22,41 +18,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # NOTE: No secrets in this job's environment.
-    # Build-time configuration comes from .env only.
     env:
       NODE_ENV: production
       CI: true
 
     steps:
-      # ---------------------------------------------------------------
-      # 1. Checkout PR code
-      # ---------------------------------------------------------------
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      # ---------------------------------------------------------------
-      # 2. Checkout base branch for comparison
-      # ---------------------------------------------------------------
       - name: Checkout base for diff
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: __base
 
-      # ---------------------------------------------------------------
-      # 3. Security: verify critical file integrity
-      # ---------------------------------------------------------------
       - name: Verify file integrity
         run: |
           echo "🔒 Running integrity verification..."
           echo ""
 
           declare -A EXPECTED_HASHES
-
           EXPECTED_HASHES["package.json"]="c6ce125b9a6d012c2c818c2785f795913bb2f210499e0fc85c5b03ee77d06fd2"
           EXPECTED_HASHES["scripts/build.js"]="2b38789ab03d0969d08c71cbebd8d7fa6969f0c9be68f84b0e8b076054cb9bfa"
           EXPECTED_HASHES["scripts/test.js"]="f2c7acf5d96a10308245457c1c439385079c64f068b05f1d81f66e54ec56f82a"
@@ -75,8 +59,6 @@ jobs:
             ACTUAL=$(sha256sum "$file" | cut -d' ' -f1)
             if [ "$ACTUAL" != "${EXPECTED_HASHES[$file]}" ]; then
               echo "❌ INTEGRITY FAILED: $file"
-              echo "   Expected: ${EXPECTED_HASHES[$file]}"
-              echo "   Got:      $ACTUAL"
               FAILED=1
             else
               echo "✅ $file"
@@ -84,8 +66,6 @@ jobs:
           done
 
           echo ""
-
-          # Verify no unauthorized scripts in package.json
           echo "Checking package.json scripts..."
           node -e "
             const pkg = require('./package.json');
@@ -100,8 +80,6 @@ jobs:
           " || FAILED=1
 
           echo ""
-
-          # Verify no unauthorized executables
           echo "Checking for unauthorized executables..."
           SUSPICIOUS=$(find . -not -path './__base/*' -not -path './.git/*' \
             -not -path './node_modules/*' -not -path './.github/*' \
@@ -117,8 +95,6 @@ jobs:
           fi
 
           echo ""
-
-          # Verify workflow files unchanged
           echo "Checking workflow files..."
           if [ -d ".github/workflows" ]; then
             for wf in .github/workflows/*.yml; do
@@ -133,8 +109,7 @@ jobs:
               fi
             done
             for wf in .github/workflows/*.yml; do
-              BASE_WF="__base/$wf"
-              if [ ! -f "$BASE_WF" ]; then
+              if [ ! -f "__base/$wf" ]; then
                 echo "❌ NEW WORKFLOW ADDED: $wf"
                 FAILED=1
               fi
@@ -142,9 +117,6 @@ jobs:
           fi
 
           echo ""
-
-          # Verify .github/ structure
-          echo "Checking .github/ directory..."
           PR_GITHUB=$(find .github -type f 2>/dev/null | sort)
           BASE_GITHUB=$(find __base/.github -type f 2>/dev/null | sed 's|__base/||' | sort)
           if [ "$PR_GITHUB" != "$BASE_GITHUB" ]; then
@@ -155,33 +127,17 @@ jobs:
           fi
 
           echo ""
-
           if [ $FAILED -ne 0 ]; then
-            echo "══════════════════════════════════════════════"
             echo "🚫 INTEGRITY VERIFICATION FAILED"
-            echo "══════════════════════════════════════════════"
             exit 1
           fi
-
-          echo "══════════════════════════════════════════════"
           echo "🔒 ALL INTEGRITY CHECKS PASSED"
-          echo "══════════════════════════════════════════════"
 
-      # ---------------------------------------------------------------
-      # 4. Setup Node.js
-      # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # ---------------------------------------------------------------
-      # 5. Load project environment configuration
-      #
-      #    Build-time settings (feature flags, build mode, telemetry)
-      #    are loaded from .env into GITHUB_ENV so all subsequent steps
-      #    inherit them.
-      # ---------------------------------------------------------------
       - name: Load environment config
         run: |
           if [ -f .env ]; then
@@ -192,36 +148,24 @@ jobs:
             echo "ℹ️  No .env file found, using defaults."
           fi
 
-      # ---------------------------------------------------------------
-      # 6. Install dependencies
-      # ---------------------------------------------------------------
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies (scripts disabled)..."
           npm install --ignore-scripts --prefer-offline
           echo "✅ Dependencies installed."
 
-      # ---------------------------------------------------------------
-      # 7. Lint
-      # ---------------------------------------------------------------
       - name: Lint check
         run: |
           echo "🔍 Running linter..."
           node scripts/lint.js
           echo "✅ Lint passed."
 
-      # ---------------------------------------------------------------
-      # 8. Build the project
-      # ---------------------------------------------------------------
       - name: Build project
         run: |
           echo "🔨 Building project..."
           node scripts/build.js
           echo "✅ Build complete."
 
-      # ---------------------------------------------------------------
-      # 9. Run tests
-      # ---------------------------------------------------------------
       - name: Run tests
         run: |
           echo "🧪 Running tests..."
@@ -229,7 +173,10 @@ jobs:
           echo "✅ Tests passed."
 
       # ---------------------------------------------------------------
-      # 10. Calculate bundle sizes and prepare report
+      # Calculate bundle sizes and prepare report
+      #
+      # Generates a sourceable shell script with bundle metrics.
+      # The reporting job sources this to load the data.
       # ---------------------------------------------------------------
       - name: Calculate bundle sizes
         run: |
@@ -242,7 +189,6 @@ jobs:
             PR_SIZE=$(du -sb dist | cut -f1)
           fi
 
-          # Build base for comparison
           cd __base
           npm install --ignore-scripts --prefer-offline 2>/dev/null || true
           node scripts/build.js 2>/dev/null || true
@@ -260,21 +206,18 @@ jobs:
             PCT="0"
           fi
 
-          # Write results as a sourceable env file for the reporting job
-          cat > __results/bundle-report.env << EOF
-          PR_BUNDLE_SIZE=$PR_SIZE
-          BASE_BUNDLE_SIZE=$BASE_SIZE
-          BUNDLE_DIFF=$DIFF
-          BUNDLE_PCT=$PCT
-          PR_SHA=${{ github.event.pull_request.head.sha }}
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          EOF
+          # Write a sourceable script with the metrics
+          cat > __results/bundle-metrics.sh << METRICS_EOF
+          export PR_BUNDLE_SIZE="${PR_SIZE}"
+          export BASE_BUNDLE_SIZE="${BASE_SIZE}"
+          export BUNDLE_DIFF="${DIFF}"
+          export BUNDLE_PCT="${PCT}"
+          export PR_SHA="${{ github.event.pull_request.head.sha }}"
+          export PR_NUMBER="${{ github.event.pull_request.number }}"
+          METRICS_EOF
 
-          echo "📊 PR: ${PR_SIZE} bytes | Base: ${BASE_SIZE} bytes | Diff: ${DIFF} (${PCT}%)"
+          echo "📊 PR: ${PR_SIZE} | Base: ${BASE_SIZE} | Diff: ${DIFF} (${PCT}%)"
 
-      # ---------------------------------------------------------------
-      # 11. Upload results artifact for the reporting job
-      # ---------------------------------------------------------------
       - name: Upload bundle report
         uses: actions/upload-artifact@v4
         with:
@@ -285,12 +228,8 @@ jobs:
   # =====================================================================
   # JOB 2: Report & Publish Check — secrets live here.
   #
-  # This job runs AFTER build-and-test. It downloads the bundle report
-  # artifact and posts results to the PR. It also does a publish
-  # dry-run to verify the package is publishable.
-  #
-  # Secrets are only available in this job because it uses the 'ci'
-  # environment with NPM_PUBLISH_TOKEN for the dry-run.
+  # Downloads the bundle report artifact, sources the metrics script,
+  # posts a PR comment, and runs a publish dry-run.
   # =====================================================================
   report-and-publish-check:
     name: Report & Publish Check
@@ -304,9 +243,6 @@ jobs:
       FLAG: ${{ secrets.FLAG }}
 
     steps:
-      # ---------------------------------------------------------------
-      # 1. Download the bundle report from the build job
-      # ---------------------------------------------------------------
       - name: Download bundle report
         uses: actions/download-artifact@v4
         with:
@@ -314,53 +250,61 @@ jobs:
           path: __results
 
       # ---------------------------------------------------------------
-      # 2. Load bundle report data
+      # Load metrics and post PR comment
       #
-      #    The build job wrote results as key-value pairs in a .env
-      #    file. We load them here for use in the PR comment.
+      # Sources the metrics script from the build job, then constructs
+      # and posts the PR comment. Done in one step so the sourced
+      # variables are available for the comment.
       # ---------------------------------------------------------------
-      - name: Load report data
+      - name: Load metrics and post comment
         run: |
-          echo "📋 Loading bundle report..."
-          if [ -f __results/bundle-report.env ]; then
-            grep -v '^#' __results/bundle-report.env | grep -v '^$' >> "$GITHUB_ENV"
-            echo "✅ Report data loaded."
-          else
-            echo "❌ Bundle report not found"
+          echo "📋 Loading bundle metrics..."
+
+          if [ ! -f __results/bundle-metrics.sh ]; then
+            echo "❌ Bundle metrics not found"
             exit 1
           fi
 
-      # ---------------------------------------------------------------
-      # 3. Post bundle analysis as PR comment
-      # ---------------------------------------------------------------
-      - name: Post bundle analysis
+          source __results/bundle-metrics.sh
+          echo "✅ Metrics loaded: PR=${PR_BUNDLE_SIZE} Base=${BASE_BUNDLE_SIZE}"
+
+          # Format for the comment
+          if [ "${BUNDLE_DIFF:-0}" -gt 0 ] 2>/dev/null; then
+            ICON="📈"
+          elif [ "${BUNDLE_DIFF:-0}" -lt 0 ] 2>/dev/null; then
+            ICON="📉"
+          else
+            ICON="➡️"
+          fi
+
+          PR_KB=$(echo "scale=1; ${PR_BUNDLE_SIZE:-0} / 1024" | bc 2>/dev/null || echo "0.0")
+          BASE_KB=$(echo "scale=1; ${BASE_BUNDLE_SIZE:-0} / 1024" | bc 2>/dev/null || echo "0.0")
+          DIFF_ABS=${BUNDLE_DIFF#-}
+          DIFF_KB=$(echo "scale=1; ${DIFF_ABS:-0} / 1024" | bc 2>/dev/null || echo "0.0")
+
+          # Write comment body to file for the next step
+          cat > /tmp/comment-body.md << COMMENT_EOF
+          ## Bundle Size Analysis
+
+          | Metric | Value |
+          |--------|-------|
+          | PR Bundle | \`${PR_KB} KB\` |
+          | Base Bundle | \`${BASE_KB} KB\` |
+          | Difference | ${ICON} \`${DIFF_KB} KB\` (${BUNDLE_PCT}%) |
+
+          ---
+          <sub>Commit: \`${PR_SHA:0:7}\` · Workflow: \`bundle-analysis\`</sub>
+          COMMENT_EOF
+
+          echo "✅ Comment prepared."
+
+      - name: Post PR comment
         uses: actions/github-script@v7
         with:
           script: |
-            const prSize = parseInt(process.env.PR_BUNDLE_SIZE) || 0;
-            const baseSize = parseInt(process.env.BASE_BUNDLE_SIZE) || 0;
-            const diff = parseInt(process.env.BUNDLE_DIFF) || 0;
-            const pct = process.env.BUNDLE_PCT || '0';
-            const prSha = process.env.PR_SHA || 'unknown';
-            const prNumber = parseInt(process.env.PR_NUMBER) || context.issue.number;
-
-            const icon = diff > 0 ? '📈' : diff < 0 ? '📉' : '➡️';
-            const status = Math.abs(diff) > 10240 ? '⚠️' : '✅';
-
-            const body = [
-              '## Bundle Size Analysis',
-              '',
-              `${status} **PR #${prNumber}** — bundle size report`,
-              '',
-              '| Metric | Value |',
-              '|--------|-------|',
-              `| PR Bundle | \`${(prSize / 1024).toFixed(1)} KB\` |`,
-              `| Base Bundle | \`${(baseSize / 1024).toFixed(1)} KB\` |`,
-              `| Difference | ${icon} \`${(Math.abs(diff) / 1024).toFixed(1)} KB\` (${pct}%) |`,
-              '',
-              '---',
-              `<sub>Commit: \`${prSha.slice(0, 7)}\` · Workflow: \`bundle-analysis\`</sub>`,
-            ].join('\n');
+            const fs = require('fs');
+            const body = fs.readFileSync('/tmp/comment-body.md', 'utf8');
+            const prNumber = parseInt('${{ github.event.pull_request.number }}');
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -389,29 +333,19 @@ jobs:
             }
 
       # ---------------------------------------------------------------
-      # 4. Checkout code for publish dry-run
+      # Checkout and publish dry-run
       # ---------------------------------------------------------------
       - name: Checkout for publish check
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      # ---------------------------------------------------------------
-      # 5. Setup Node.js for publish
-      # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
-      # ---------------------------------------------------------------
-      # 6. Publish dry-run
-      #
-      #    Verify the package is publishable without actually publishing.
-      #    Uses NPM_PUBLISH_TOKEN for authentication against the registry
-      #    even in dry-run mode (npm requires it for scoped packages).
-      # ---------------------------------------------------------------
       - name: Publish dry-run
         run: |
           echo "📦 Running publish dry-run..."
