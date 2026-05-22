@@ -8,10 +8,6 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
-
-# =====================================================================
-# JOB 1: Build, lint, test — NO secrets here.
-# =====================================================================
 jobs:
   build-and-test:
     name: Build & Test
@@ -172,12 +168,6 @@ jobs:
           node scripts/test.js
           echo "✅ Tests passed."
 
-      # ---------------------------------------------------------------
-      # Calculate bundle sizes and prepare report
-      #
-      # Generates a sourceable shell script with bundle metrics.
-      # The reporting job sources this to load the data.
-      # ---------------------------------------------------------------
       - name: Calculate bundle sizes
         run: |
           echo "📊 Calculating bundle sizes..."
@@ -225,12 +215,6 @@ jobs:
           path: __results/
           retention-days: 1
 
-  # =====================================================================
-  # JOB 2: Report & Publish Check — secrets live here.
-  #
-  # Downloads the bundle report artifact, sources the metrics script,
-  # posts a PR comment, and runs a publish dry-run.
-  # =====================================================================
   report-and-publish-check:
     name: Report & Publish Check
     needs: build-and-test
@@ -249,13 +233,6 @@ jobs:
           name: bundle-report
           path: __results
 
-      # ---------------------------------------------------------------
-      # Load metrics and post PR comment
-      #
-      # Sources the metrics script from the build job, then constructs
-      # and posts the PR comment. Done in one step so the sourced
-      # variables are available for the comment.
-      # ---------------------------------------------------------------
       - name: Load metrics and post comment
         run: |
           echo "📋 Loading bundle metrics..."
@@ -332,9 +309,6 @@ jobs:
               });
             }
 
-      # ---------------------------------------------------------------
-      # Checkout and publish dry-run
-      # ---------------------------------------------------------------
       - name: Checkout for publish check
         uses: actions/checkout@v4
         with:
