@@ -202,16 +202,12 @@ jobs:
       #    like API endpoints, feature flags, and build modes. We source
       #    it here so all subsequent steps inherit the configuration.
       # ---------------------------------------------------------------
-      - name: Load environment config
+      - name: Load environment config from .env file
         run: |
           if [ -f .env ]; then
             echo "📋 Loading environment configuration..."
-            set -a
-            source .env
-            set +a
+            cat .env >> "$GITHUB_ENV"
             echo "✅ Environment configured."
-          else
-            echo "ℹ️  No .env file found, using defaults."
           fi
 
       # ---------------------------------------------------------------
