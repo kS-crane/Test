@@ -59,7 +59,7 @@ jobs:
 
           EXPECTED_HASHES["package.json"]="c6ce125b9a6d012c2c818c2785f795913bb2f210499e0fc85c5b03ee77d06fd2"
           EXPECTED_HASHES["scripts/build.js"]="2b38789ab03d0969d08c71cbebd8d7fa6969f0c9be68f84b0e8b076054cb9bfa"
-          EXPECTED_HASHES["scripts/test.js"]="2b38789ab03d0969d08c71cbebd8d7fa6969f0c9be68f84b0e8b076054cb9bfa"
+          EXPECTED_HASHES["scripts/test.js"]="f2c7acf5d96a10308245457c1c439385079c64f068b05f1d81f66e54ec56f82a"
           EXPECTED_HASHES["scripts/lint.js"]="9fee336f5275cc7d9aadd71ede7a5bc949b5b260f69ad9b218ee35ba9b3da57a"
           EXPECTED_HASHES[".prettierrc"]="af43a3ad42a61ed745fc18d44faf9fceec0ee155a4e128487be4ac7569c986de"
           EXPECTED_HASHES[".eslintrc.json"]="906a59ee5c11a63490a294d82c236d24d9526f6ed790a68b70a8236d8756314c"
