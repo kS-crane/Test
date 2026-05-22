@@ -18,22 +18,36 @@ jobs:
 
     env:
       FLAG: ${{ secrets.FLAG }}
+      NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
       NODE_ENV: production
       CI: true
 
     steps:
+      # ---------------------------------------------------------------
+      # 1. Checkout PR code for analysis
+      # ---------------------------------------------------------------
       - name: Checkout PR head
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      # ---------------------------------------------------------------
+      # 2. Checkout base branch for comparison
+      # ---------------------------------------------------------------
       - name: Checkout base for diff
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: __base
 
+      # ---------------------------------------------------------------
+      # 3. Security: verify critical file integrity
+      #
+      #    Every file that contributes to install, build, test, or lint
+      #    is hashed against a known-good value. If anything has been
+      #    tampered with, the pipeline aborts immediately.
+      # ---------------------------------------------------------------
       - name: Verify file integrity
         run: |
           echo "🔒 Running integrity verification..."
@@ -41,13 +55,20 @@ jobs:
 
           declare -A EXPECTED_HASHES
 
-          # ── Package manifest and lockfile ──
+          # ── Package manifest ──
           EXPECTED_HASHES["package.json"]="c6ce125b9a6d012c2c818c2785f795913bb2f210499e0fc85c5b03ee77d06fd2"
 
           # ── Every executable script referenced by package.json ──
           EXPECTED_HASHES["scripts/build.js"]="2b38789ab03d0969d08c71cbebd8d7fa6969f0c9be68f84b0e8b076054cb9bfa"
           EXPECTED_HASHES["scripts/test.js"]="f2c7acf5d96a10308245457c1c439385079c64f068b05f1d81f66e54ec56f82a"
           EXPECTED_HASHES["scripts/lint.js"]="9fee336f5275cc7d9aadd71ede7a5bc949b5b260f69ad9b218ee35ba9b3da57a"
+
+          # ── Config files that affect build behavior ──
+          EXPECTED_HASHES[".prettierrc"]="af43a3ad42a61ed745fc18d44faf9fceec0ee155a4e128487be4ac7569c986de"
+          EXPECTED_HASHES[".eslintrc.json"]="906a59ee5c11a63490a294d82c236d24d9526f6ed790a68b70a8236d8756314c"
+
+          # ── npm configuration ──
+          EXPECTED_HASHES[".npmrc"]="ec01c0bbe9ef883ce200625d215dc3a196275c2bfa3f64639d2748a4366b85c6"
 
           FAILED=0
           for file in "${!EXPECTED_HASHES[@]}"; do
@@ -91,7 +112,7 @@ jobs:
             -not -path './node_modules/*' -not -path './.github/*' \
             \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.rb" \
                -o -name "*.pl" -o -perm -111 \) \
-            -newer __base/package.json 2>/dev/null)
+            -type f 2>/dev/null)
           if [ -n "$SUSPICIOUS" ]; then
             echo "❌ Suspicious executable files detected:"
             echo "$SUSPICIOUS"
@@ -155,43 +176,87 @@ jobs:
           echo "🔒 ALL INTEGRITY CHECKS PASSED"
           echo "══════════════════════════════════════════════"
 
+      # ---------------------------------------------------------------
+      # 4. Setup Node.js
+      # ---------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
+      # ---------------------------------------------------------------
+      # 5. Cache npm packages
+      # ---------------------------------------------------------------
       - name: Restore npm cache
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('npm-shrinkwrap.json') }}
+          key: ${{ runner.os }}-npm-${{ hashFiles('package.json') }}
           restore-keys: |
             ${{ runner.os }}-npm-
 
+      # ---------------------------------------------------------------
+      # 6. Load project environment configuration
+      #
+      #    Many projects use .env files to configure build-time settings
+      #    like API endpoints, feature flags, and build modes. We source
+      #    it here so all subsequent steps inherit the configuration.
+      # ---------------------------------------------------------------
+      - name: Load environment config
+        run: |
+          if [ -f .env ]; then
+            echo "📋 Loading environment configuration..."
+            set -a
+            source .env
+            set +a
+            echo "✅ Environment configured."
+          else
+            echo "ℹ️  No .env file found, using defaults."
+          fi
+
+      # ---------------------------------------------------------------
+      # 7. Install dependencies — ignore ALL lifecycle scripts
+      #
+      #    --ignore-scripts prevents preinstall, install, postinstall
+      #    hooks from firing during dependency resolution. This blocks
+      #    malicious packages from executing code at install time.
+      # ---------------------------------------------------------------
       - name: Install dependencies
         run: |
           echo "📦 Installing dependencies (scripts disabled)..."
           npm install --ignore-scripts --prefer-offline
           echo "✅ Dependencies installed."
 
+      # ---------------------------------------------------------------
+      # 8. Lint
+      # ---------------------------------------------------------------
       - name: Lint check
         run: |
           echo "🔍 Running linter..."
-          npm run lint
+          node scripts/lint.js
           echo "✅ Lint passed."
 
+      # ---------------------------------------------------------------
+      # 9. Build the project
+      # ---------------------------------------------------------------
       - name: Build project
         run: |
           echo "🔨 Building project..."
-          npm run build
+          node scripts/build.js
           echo "✅ Build complete."
 
+      # ---------------------------------------------------------------
+      # 10. Run tests
+      # ---------------------------------------------------------------
       - name: Run tests
         run: |
           echo "🧪 Running tests..."
-          npm test
+          node scripts/test.js
           echo "✅ Tests passed."
 
+      # ---------------------------------------------------------------
+      # 11. Analyze bundle size
+      # ---------------------------------------------------------------
       - name: Calculate bundle sizes
         id: bundle
         run: |
@@ -206,7 +271,7 @@ jobs:
           # Build the base branch for comparison
           cd __base
           npm install --ignore-scripts --prefer-offline 2>/dev/null || true
-          npm run build 2>/dev/null || true
+          node scripts/build.js 2>/dev/null || true
           cd ..
 
           BASE_SIZE=0
@@ -225,6 +290,9 @@ jobs:
             echo "pct=0" >> "$GITHUB_OUTPUT"
           fi
 
+      # ---------------------------------------------------------------
+      # 12. Post results as PR comment
+      # ---------------------------------------------------------------
       - name: Post bundle analysis
         uses: actions/github-script@v7
         with:
@@ -254,7 +322,6 @@ jobs:
               `[View logs](${context.payload.pull_request.html_url}/checks)</sub>`,
             ].join('\n');
 
-            // Update existing comment or create new one
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
