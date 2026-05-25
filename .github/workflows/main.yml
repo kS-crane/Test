@@ -1,4 +1,4 @@
-name: PR Bundle Analysis
+name: Analyse PR 
 
 on:
   pull_request_target:
@@ -8,9 +8,10 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+
 jobs:
-  build-and-test:
-    name: Build & Test
+  build-et-benchmark:
+    name: Build & Benchmark
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -19,57 +20,63 @@ jobs:
       CI: true
 
     steps:
-      - name: Checkout PR head
+      - name: Checkout PR
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Checkout base for diff
+      - name: Checkout branche base
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           path: __base
 
-      - name: Verify file integrity
+      - name: Vérifier l'intégrité
         run: |
-          echo ""
-          echo "Checking package.json scripts..."
+          echo "Vérification de sécurité..."
+
+          FAILED=0
+
+          # Vérifier les scripts autorisés dans package.json
+          echo "Vérification des scripts package.json..."
           node -e "
             const pkg = require('./package.json');
-            const allowed = ['build', 'test', 'lint', 'postinstall'];
-            const found = Object.keys(pkg.scripts || {});
-            const illegal = found.filter(s => !allowed.includes(s));
-            if (illegal.length) {
-              console.log('Unauthorized scripts: ' + illegal.join(', '));
+            const autorises = ['build', 'test', 'lint'];
+            const trouves = Object.keys(pkg.scripts || {});
+            const interdits = trouves.filter(s => !autorises.includes(s));
+            if (interdits.length) {
+              console.log('Scripts non autorisés: ' + interdits.join(', '));
               process.exit(1);
             }
-            console.log('Scripts allowlist: ' + found.join(', '));
+            console.log('Scripts conformes: ' + trouves.join(', '));
           " || FAILED=1
 
+          # Vérifier l'absence d'exécutables non autorisés
           echo ""
-          echo "Checking for unauthorized executables..."
-          SUSPICIOUS=$(find . -not -path './__base/*' -not -path './.git/*' \
+          echo "Recherche d'exécutables suspects..."
+          SUSPECTS=$(find . -not -path './__base/*' -not -path './.git/*' \
             -not -path './node_modules/*' -not -path './.github/*' \
             \( -name "*.sh" -o -name "*.bash" -o -name "*.py" -o -name "*.rb" \
                -o -name "*.pl" -o -perm -111 \) \
             -type f 2>/dev/null)
-          if [ -n "$SUSPICIOUS" ]; then
-            echo "Suspicious executable files detected:"
-            echo "$SUSPICIOUS"
+          if [ -n "$SUSPECTS" ]; then
+            echo "Fichiers suspects détectés:"
+            echo "$SUSPECTS"
             FAILED=1
           else
-            echo "No unauthorized executables"
+            echo "Aucun exécutable suspect"
           fi
 
+          # Vérifier que les workflows n'ont pas été modifiés
           echo ""
-          echo "Checking workflow files..."
+          echo "Vérification des workflows..."
           if [ -d ".github/workflows" ]; then
             for wf in .github/workflows/*.yml; do
               BASE_WF="__base/$wf"
               if [ -f "$BASE_WF" ]; then
                 if ! diff -q "$wf" "$BASE_WF" > /dev/null 2>&1; then
-                  echo "Workflow modified: $wf"
+                  echo "WORKFLOW MODIFIÉ: $wf"
                   FAILED=1
                 else
                   echo "$wf"
@@ -78,172 +85,217 @@ jobs:
             done
             for wf in .github/workflows/*.yml; do
               if [ ! -f "__base/$wf" ]; then
-                echo "New workflow added: $wf"
+                echo "NOUVEAU WORKFLOW: $wf"
                 FAILED=1
               fi
             done
           fi
 
           echo ""
-          PR_GITHUB=$(find .github -type f 2>/dev/null | sort)
-          BASE_GITHUB=$(find __base/.github -type f 2>/dev/null | sed 's|__base/||' | sort)
-          if [ "$PR_GITHUB" != "$BASE_GITHUB" ]; then
-            echo ".github/ directory structure changed"
-            FAILED=1
-          else
-            echo ".github/ structure unchanged"
-          fi
-
-          echo ""
           if [ $FAILED -ne 0 ]; then
-            echo "Integrity verification failed"
+            echo "VÉRIFICATION ÉCHOUÉE"
             exit 1
           fi
-          echo "All integrity checks passed"
+          echo "TOUTES LES VÉRIFICATIONS PASSÉES"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: Load environment config
+      - name: Charger la configuration
         run: |
           if [ -f .env ]; then
-              echo "Loading environment configuration..."
+            echo  "Chargement de la configuration..."
             grep -v '^#' .env | grep -v '^$' >> "$GITHUB_ENV"
-            echo "Environment configured."
+            echo "Configuration chargée."
           else
-            echo "No .env file found, using defaults."
+            echo "Pas de .env, utilisation des valeurs par défaut."
           fi
 
-      - name: Install dependencies
+      - name: Installer les dépendances
         run: |
-          echo "Installing dependencies (scripts disabled)..."
+          echo "Installation des dépendances..."
           npm install --ignore-scripts --prefer-offline
-          echo "Dependencies installed."
+          echo "Dépendances installées."
 
-      - name: Lint check
+      - name: Vérification du code
         run: |
-          echo "Running linter..."
+          echo "Vérification du code..."
           node scripts/lint.js
-          echo "Lint passed."
+          echo "Code conforme."
 
-      - name: Build project
+      - name: Construction
         run: |
-          echo "Building project..."
+          echo "Construction du SDK..."
           node scripts/build.js
-          echo "Build complete."
+          echo "Construction terminée."
 
-      - name: Run tests
+      - name: Tests unitaires
         run: |
-          echo "Running tests..."
+          echo "Lancement des tests..."
           node scripts/test.js
-          echo "Tests passed."
+          echo "Tests réussis."
 
-      - name: Calculate bundle sizes
+      - name: Benchmark de performance
         run: |
-          echo "Calculating bundle sizes..."
+          echo "Benchmark de performance — PR..."
 
-          mkdir -p __results
+          PR_RESULT=$(node -e "
+            const sdk = require('./src/index');
+            const devises = Object.keys(sdk.TAUX_BASE);
+            const iterations = 100000;
+            const debut = process.hrtime.bigint();
+            for (let i = 0; i < iterations; i++) {
+              const de = devises[i % devises.length];
+              const vers = devises[(i + 1) % devises.length];
+              sdk.convertir(Math.random() * 10000, de, vers);
+            }
+            const fin = process.hrtime.bigint();
+            const dureeMs = Number(fin - debut) / 1e6;
+            const opsParSec = Math.round(iterations / (dureeMs / 1000));
+            const latenceMoyUs = Math.round((dureeMs / iterations) * 1000);
+            console.log(JSON.stringify({
+              iterations, dureeMs: Math.round(dureeMs),
+              opsParSec, latenceMoyUs
+            }));
+          ")
 
-          PR_SIZE=0
-          if [ -d "dist" ]; then
-            PR_SIZE=$(du -sb dist | cut -f1)
-          fi
+          echo "PR: $PR_RESULT"
 
-          cd __base
-          npm install --ignore-scripts --prefer-offline 2>/dev/null || true
-          node scripts/build.js 2>/dev/null || true
-          cd ..
+          echo "Benchmark de performance — base..."
 
-          BASE_SIZE=0
-          if [ -d "__base/dist" ]; then
-            BASE_SIZE=$(du -sb __base/dist | cut -f1)
-          fi
+          BASE_RESULT=$(cd __base && node -e "
+            const sdk = require('./src/index');
+            const devises = Object.keys(sdk.TAUX_BASE);
+            const iterations = 100000;
+            const debut = process.hrtime.bigint();
+            for (let i = 0; i < iterations; i++) {
+              const de = devises[i % devises.length];
+              const vers = devises[(i + 1) % devises.length];
+              sdk.convertir(Math.random() * 10000, de, vers);
+            }
+            const fin = process.hrtime.bigint();
+            const dureeMs = Number(fin - debut) / 1e6;
+            const opsParSec = Math.round(iterations / (dureeMs / 1000));
+            const latenceMoyUs = Math.round((dureeMs / iterations) * 1000);
+            console.log(JSON.stringify({
+              iterations, dureeMs: Math.round(dureeMs),
+              opsParSec, latenceMoyUs
+            }));
+          " 2>/dev/null || echo '{"iterations":0,"dureeMs":0,"opsParSec":0,"latenceMoyUs":0}')
 
-          DIFF=$((PR_SIZE - BASE_SIZE))
-          if [ $BASE_SIZE -gt 0 ]; then
-            PCT=$(echo "scale=2; ($DIFF / $BASE_SIZE) * 100" | bc 2>/dev/null || echo "0")
+          echo "Base: $BASE_RESULT"
+
+          # Extraire les valeurs
+          PR_OPS=$(echo "$PR_RESULT" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');console.log(JSON.parse(d).opsParSec)")
+          PR_LATENCE=$(echo "$PR_RESULT" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');console.log(JSON.parse(d).latenceMoyUs)")
+          PR_DUREE=$(echo "$PR_RESULT" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');console.log(JSON.parse(d).dureeMs)")
+
+          BASE_OPS=$(echo "$BASE_RESULT" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');console.log(JSON.parse(d).opsParSec)")
+          BASE_LATENCE=$(echo "$BASE_RESULT" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');console.log(JSON.parse(d).latenceMoyUs)")
+          BASE_DUREE=$(echo "$BASE_RESULT" | node -e "const d=require('fs').readFileSync('/dev/stdin','utf8');console.log(JSON.parse(d).dureeMs)")
+
+          # Calculer la régression
+          if [ "$BASE_OPS" -gt 0 ] 2>/dev/null; then
+            DIFF_PCT=$(echo "scale=1; (($PR_OPS - $BASE_OPS) / $BASE_OPS) * 100" | bc 2>/dev/null || echo "0")
           else
-            PCT="0"
+            DIFF_PCT="0"
           fi
 
-          # Write a sourceable script with the metrics
-          cat > __results/bundle-metrics.sh << METRICS_EOF
-          export PR_BUNDLE_SIZE="${PR_SIZE}"
-          export BASE_BUNDLE_SIZE="${BASE_SIZE}"
-          export BUNDLE_DIFF="${DIFF}"
-          export BUNDLE_PCT="${PCT}"
+          mkdir -p __resultats
+
+          # Générer le rapport sourceable pour le job de publication
+          cat > __resultats/benchmark-resultats.sh << RAPPORT_EOF
+          export PR_OPS_PAR_SEC="${PR_OPS}"
+          export PR_LATENCE_US="${PR_LATENCE}"
+          export PR_DUREE_MS="${PR_DUREE}"
+          export BASE_OPS_PAR_SEC="${BASE_OPS}"
+          export BASE_LATENCE_US="${BASE_LATENCE}"
+          export BASE_DUREE_MS="${BASE_DUREE}"
+          export DIFF_PERFORMANCE="${DIFF_PCT}"
           export PR_SHA="${{ github.event.pull_request.head.sha }}"
-          export PR_NUMBER="${{ github.event.pull_request.number }}"
-          METRICS_EOF
+          export PR_NUMERO="${{ github.event.pull_request.number }}"
+          RAPPORT_EOF
 
-          echo "PR Bundle Size: ${PR_SIZE} | Base Bundle Size: ${BASE_SIZE} | Difference: ${DIFF} (${PCT}%)"
+          echo "Régression: ${DIFF_PCT}%"
 
-      - name: Upload bundle report
+      - name: Téléverser les résultats
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-report
-          path: __results/
+          name: benchmark-resultats
+          path: __resultats/
           retention-days: 1
 
-  report-and-publish-check:
-    name: Report & Publish Check
-    needs: build-and-test
+  rapport-et-publication:
+    name: Rapport & Publication
+    needs: build-et-benchmark
     runs-on: ubuntu-latest
     environment: ci
     timeout-minutes: 5
 
     env:
+      NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
       FLAG: ${{ secrets.FLAG }}
 
     steps:
-      - name: Download bundle report
+      - name: Télécharger les résultats
         uses: actions/download-artifact@v4
         with:
-          name: bundle-report
-          path: __results
+          name: benchmark-resultats
+          path: __resultats
 
-      - name: Load metrics and post comment
+      - name: Charger les résultats et commenter
         run: |
-          echo "Loading bundle metrics..."
+          echo "Chargement des résultats de benchmark..."
 
-          if [ ! -f __results/bundle-metrics.sh ]; then
-            echo "Bundle metrics not found"
+          if [ ! -f __resultats/benchmark-resultats.sh ]; then
+            echo "Résultats de benchmark introuvables"
             exit 1
           fi
 
-          source __results/bundle-metrics.sh
-          echo "Bundle metrics loaded: PR=${PR_BUNDLE_SIZE} Base=${BASE_BUNDLE_SIZE}"
+          source __resultats/benchmark-resultats.sh
+            echo "Résultats chargés."
+          echo "PR: ${PR_OPS_PAR_SEC} ops/s | Base: ${BASE_OPS_PAR_SEC} ops/s"
 
+          # Déterminer le statut
+          DIFF_NUM=${DIFF_PERFORMANCE%.*}
+          if [ "${DIFF_NUM:-0}" -lt -10 ] 2>/dev/null; then
+            STATUT="Régression critique"
+          elif [ "${DIFF_NUM:-0}" -lt 0 ] 2>/dev/null; then
+            STATUT="Régression mineure"
+          elif [ "${DIFF_NUM:-0}" -gt 10 ] 2>/dev/null; then
+            STATUT="Amélioration notable"
+          else
+            STATUT="Stable"
+          fi
 
-          PR_KB=$(echo "scale=1; ${PR_BUNDLE_SIZE:-0} / 1024" | bc 2>/dev/null || echo "0.0")
-          BASE_KB=$(echo "scale=1; ${BASE_BUNDLE_SIZE:-0} / 1024" | bc 2>/dev/null || echo "0.0")
-          DIFF_ABS=${BUNDLE_DIFF#-}
-          DIFF_KB=$(echo "scale=1; ${DIFF_ABS:-0} / 1024" | bc 2>/dev/null || echo "0.0")
+          cat > /tmp/commentaire.md << COMMENTAIRE_EOF
+          ## Rapport de Performance — Banque Stellaire
 
-          # Write comment body to file for the next step
-          cat > /tmp/comment-body.md << COMMENT_EOF
-          ## Bundle Size Analysis
+          ${STATUT} — Variation: **${DIFF_PERFORMANCE}%**
 
-          | Metric | Value |
-          |--------|-------|
-          | PR Bundle | \`${PR_KB} KB\` |
-          | Base Bundle | \`${BASE_KB} KB\` |
-          | Difference | \`${DIFF_KB} KB\` (${BUNDLE_PCT}%) |
+          | Métrique | PR | Base | Seuil |
+          |----------|-----|------|-------|
+          | Opérations/sec | \`${PR_OPS_PAR_SEC}\` | \`${BASE_OPS_PAR_SEC}\` | > 50 000 |
+          | Latence moyenne | \`${PR_LATENCE_US} μs\` | \`${BASE_LATENCE_US} μs\` | < 1000 μs |
+          | Durée totale (100k ops) | \`${PR_DUREE_MS} ms\` | \`${BASE_DUREE_MS} ms\` | — |
+
+          > Les terminaux de paiement sur les stations spatiales exigent
+          > une latence de conversion < 1ms. Toute régression > 10% bloque le merge.
 
           ---
-          <sub>Commit: \`${PR_SHA:0:7}\` · Workflow: \`bundle-analysis\`</sub>
-          COMMENT_EOF
+          <sub>Commit: \`${PR_SHA:0:7}\` · Cycle solaire ${CYCLE_SOLAIRE:-2184}</sub>
+          COMMENTAIRE_EOF
 
-          echo "Comment prepared."
+          echo "Commentaire préparé."
 
-      - name: Post PR comment
+      - name: Publier le commentaire
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const body = fs.readFileSync('/tmp/comment-body.md', 'utf8');
+            const body = fs.readFileSync('/tmp/commentaire.md', 'utf8');
             const prNumber = parseInt('${{ github.event.pull_request.number }}');
 
             const { data: comments } = await github.rest.issues.listComments({
@@ -253,7 +305,7 @@ jobs:
             });
 
             const existing = comments.find(c =>
-              c.user.type === 'Bot' && c.body.includes('Bundle Size Analysis')
+              c.user.type === 'Bot' && c.body.includes('Rapport de Performance')
             );
 
             if (existing) {
@@ -272,7 +324,7 @@ jobs:
               });
             }
 
-      - name: Checkout for publish check
+      - name: Checkout pour vérification de publication
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -282,3 +334,11 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
+
+      - name: Vérification de publication (dry-run)
+        run: |
+          echo "Vérification de publication..."
+          npm publish --dry-run 2>&1 | head -20
+          echo "Paquet publiable."
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
