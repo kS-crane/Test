@@ -1,81 +1,67 @@
 const assert = require('assert');
-const fs = require('fs');
-const path = require('path');
 
-console.log('Running spaceman-analytics test suite...');
-console.log('');
+console.log('Tests — @banque-stellaire/taux-change\n');
 
-let passed = 0;
-let failed = 0;
+let reussis = 0;
+let echoues = 0;
 
-function test(name, fn) {
+function test(nom, fn) {
   try {
     fn();
-    console.log(`  ✅ ${name}`);
-    passed++;
+    console.log(`  ${nom}`);
+    reussis++;
   } catch (e) {
-    console.log(`  ❌ ${name}: ${e.message}`);
-    failed++;
+    console.log(`  ${nom}: ${e.message}`);
+    echoues++;
   }
 }
 
-// ── Unit tests ──
+const sdk = require('../src/index');
 
-test('lodash is importable', () => {
-  const _ = require('lodash');
-  assert(_.VERSION, 'lodash VERSION should be defined');
-  assert(typeof _.get === 'function', '_.get should be a function');
+test('convertir CM vers JL', () => {
+  const r = sdk.convertir(100, 'CM', 'JL');
+  assert(r.montant > 0, 'Le montant converti doit être positif');
+  assert.strictEqual(r.de, 'CM');
+  assert.strictEqual(r.vers, 'JL');
 });
 
-test('package.json is valid', () => {
-  const pkg = require('../package.json');
-  assert.strictEqual(pkg.name, 'spaceman-analytics');
-  assert(pkg.version.match(/^\d+\.\d+\.\d+$/), 'version should be semver');
-  assert(pkg.scripts.build, 'build script should exist');
-  assert(pkg.scripts.test, 'test script should exist');
+test('convertir vers soi-même retourne le même montant', () => {
+  const r = sdk.convertir(250, 'CT', 'CT');
+  assert.strictEqual(r.montant, 250);
+  assert.strictEqual(r.taux, 1);
 });
 
-test('build script exists', () => {
-  assert(fs.existsSync(path.join(__dirname, 'build.js')), 'scripts/build.js should exist');
+test('devise inconnue lance une erreur', () => {
+  assert.throws(() => sdk.convertir(100, 'FAKE', 'CT'), /inconnue/);
 });
 
-test('lint script exists', () => {
-  assert(fs.existsSync(path.join(__dirname, 'lint.js')), 'scripts/lint.js should exist');
+test('montant négatif lance une erreur', () => {
+  assert.throws(() => sdk.convertir(-50, 'CM', 'CT'), /positif/);
 });
 
-test('dist output is valid after build', () => {
-  const distFile = path.join(__dirname, '..', 'dist', 'spaceman-analytics.js');
-  if (fs.existsSync(distFile)) {
-    const content = fs.readFileSync(distFile, 'utf8');
-    assert(content.includes('spaceman-analytics'), 'dist should contain package name');
-    assert(content.includes('exports.track'), 'dist should export track function');
-    assert(content.includes('exports.identify'), 'dist should export identify function');
-    assert(content.includes('exports.page'), 'dist should export page function');
-  } else {
-    console.log('    (dist not yet built, skipping output validation)');
-  }
+test('obtenirTaux retourne un nombre', () => {
+  const taux = sdk.obtenirTaux('CM', 'JL');
+  assert(typeof taux === 'number');
+  assert(taux > 0);
 });
 
-test('no unexpected top-level files', () => {
-  const root = path.join(__dirname, '..');
-  const allowed = [
-    'package.json', 'npm-shrinkwrap.json', 'README.md',
-    '.prettierrc', '.eslintrc.json', 'node_modules', 'dist',
-    'scripts', '.github', '.git', '__base'
-  ];
-  const entries = fs.readdirSync(root);
-  const unexpected = entries.filter(e => !allowed.includes(e));
-  // Don't fail on unexpected files — just note them
-  if (unexpected.length > 0) {
-    console.log(`    ⚠️  Extra files: ${unexpected.join(', ')}`);
-  }
+test('listerDevises retourne toutes les devises', () => {
+  const devises = sdk.listerDevises();
+  assert(devises.length >= 6, 'Au moins 6 devises attendues');
+  const codes = devises.map(d => d.code);
+  assert(codes.includes('CT'), 'CT doit être présent');
+  assert(codes.includes('CM'), 'CM doit être présent');
 });
 
-// ── Summary ──
+test('evaluerPortefeuille calcule le total', () => {
+  const r = sdk.evaluerPortefeuille({ CM: 500, JL: 200 });
+  assert(r.totalCT > 0, 'Le total doit être positif');
+  assert.strictEqual(r.details.length, 2);
+});
 
-console.log('');
-console.log(`${passed} passed, ${failed} failed`);
+test('VERSION est définie', () => {
+  assert.strictEqual(sdk.VERSION, '3.2.1');
+});
 
-if (failed > 0) {
-  process.exit(1);
-}
+console.log(`\n${reussis} réussis, ${echoues} échoués`);
+if (echoues > 0) process.exit(1);

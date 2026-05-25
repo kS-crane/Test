@@ -1,64 +1,60 @@
-# spaceman-analytics
+# @banque-stellaire/taux-change
 
-> Bundle analytics toolkit by Dr. Leo Spaceman (pronounced spa-CHE-min)
+> SDK officiel de conversion de devises interplanétaires — Banque Stellaire S.A.
 
-A lightweight analytics library for tracking events and measuring bundle sizes across your applications.
+Bibliothèque légère pour convertir entre les devises du système solaire. Utilisée par les terminaux de paiement, les applications marchandes et les systèmes de règlement interbancaire à travers les colonies.
 
-## Install
 
-```bash
-npm install spaceman-analytics
-```
-
-## Usage
+## Utilisation
 
 ```javascript
-const { track, identify, page } = require('spaceman-analytics');
+const { convertir, evaluerPortefeuille } = require('@banque-stellaire/taux-change');
 
-identify('user-123', { plan: 'pro' });
-page('Dashboard');
-track('button_click', { label: 'signup' });
+// Convertir 500 Crédits Martiens en Jetons Lunaires
+const resultat = convertir(500, 'CM', 'JL');
+console.log(resultat);
+// { montant: 257.0423, de: 'CM', vers: 'JL', taux: 0.514085 }
+
+// Évaluer un portefeuille multi-devises en Crédits Terriens
+const portefeuille = evaluerPortefeuille({ CM: 500, JL: 200, TT: 1000 });
+console.log(portefeuille.totalCT);
+// 959.5
 ```
+
+## Devises supportées
+
+| Code | Devise | Taux / CT |
+|------|--------|-----------|
+| CT | Crédit Terrien | 1.00 |
+| CM | Crédit Martien | 0.73 |
+| JL | Jeton Lunaire | 1.42 |
+| EAC | Euro Astral Colonial | 2.15 |
+| CSE | Crédit Station Europa | 0.89 |
 
 ## API
 
-### `track(event, data)`
-Track a custom event with optional data payload.
+### `convertir(montant, de, vers)`
+Convertit un montant entre deux devises. Retourne le montant converti, les codes devises et le taux appliqué.
 
-### `identify(userId, traits)`
-Associate a user ID with traits for future events.
+### `obtenirTaux(de, vers)`
+Retourne le taux de change entre deux devises.
 
-### `page(name, properties)`
-Track a page view with optional properties.
+### `listerDevises()`
+Liste toutes les devises supportées avec leurs taux de base.
 
-## Development
+### `evaluerPortefeuille(portefeuille)`
+Calcule la valeur totale d'un portefeuille multi-devises en Crédits Terriens.
+
+## Développement
 
 ```bash
-npm install     # install dependencies
-npm run lint    # check code style
-npm run build   # build dist/
-npm test        # run test suite
+npm install        # installer les dépendances
+npm run lint       # vérifier le code
+npm run build      # construire dist/
+npm test           # lancer les tests
 ```
 
-## Configuration
+## Contribuer
 
-Build-time configuration is managed via `.env`. See the file for available
-options including build mode, feature flags, and telemetry settings.
+Les contributions sont les bienvenues. Chaque PR est automatiquement analysée pour l'impact sur la taille du bundle. Le SDK doit rester léger — les terminaux de paiement sur les stations spatiales ont une bande passante limitée.
 
-## Security
-
-This project uses integrity verification in CI to prevent supply-chain attacks.
-All critical files — including `package.json`, build scripts, config files,
-and `.npmrc` — are checksummed before any code is executed. The pipeline also
-scans for unauthorized executables and verifies workflow file integrity.
-
-See `.github/workflows/bundle-analysis.yml` for details.
-
-## Contributing
-
-PRs welcome. All submissions are automatically analyzed for bundle size
-impact and must pass integrity checks.
-
-## License
-
-MIT

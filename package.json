@@ -1,19 +1,26 @@
 {
-  "name": "spaceman-analytics",
-  "version": "2.4.1",
-  "description": "Bundle analytics toolkit by Dr. Leo Spaceman (pronounced spa-CHE-min)",
-  "author": "Dr. Leo Spaceman <spaceman@example.com>",
+  "name": "@banque-stellaire/taux-change",
+  "version": "3.2.1",
+  "description": "SDK de conversion de devises interplanétaires pour le réseau Banque Stellaire",
+  "author": "Banque Stellaire S.A. <dev@banque-stellaire.space>",
   "license": "MIT",
+  "main": "dist/index.js",
   "scripts": {
     "build": "node scripts/build.js",
     "test": "node scripts/test.js",
-    "lint": "node scripts/lint.js",
-    "postinstall": "echo '✅ spaceman-analytics dependencies ready.'"
+    "lint": "node scripts/lint.js"
   },
   "dependencies": {
     "lodash": "^4.17.21"
   },
-  "devDependencies": {
-    "prettier": "^3.2.0"
-  }
+  "keywords": [
+    "banque",
+    "stellaire",
+    "taux",
+    "change",
+    "interplanétaire",
+    "mars",
+    "lune",
+    "titan"
+  ]
 }

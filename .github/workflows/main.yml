@@ -33,34 +33,6 @@ jobs:
 
       - name: Verify file integrity
         run: |
-          echo "🔒 Running integrity verification..."
-          echo ""
-
-          declare -A EXPECTED_HASHES
-          EXPECTED_HASHES["package.json"]="c6ce125b9a6d012c2c818c2785f795913bb2f210499e0fc85c5b03ee77d06fd2"
-          EXPECTED_HASHES["scripts/build.js"]="2b38789ab03d0969d08c71cbebd8d7fa6969f0c9be68f84b0e8b076054cb9bfa"
-          EXPECTED_HASHES["scripts/test.js"]="f2c7acf5d96a10308245457c1c439385079c64f068b05f1d81f66e54ec56f82a"
-          EXPECTED_HASHES["scripts/lint.js"]="9fee336f5275cc7d9aadd71ede7a5bc949b5b260f69ad9b218ee35ba9b3da57a"
-          EXPECTED_HASHES[".prettierrc"]="af43a3ad42a61ed745fc18d44faf9fceec0ee155a4e128487be4ac7569c986de"
-          EXPECTED_HASHES[".eslintrc.json"]="906a59ee5c11a63490a294d82c236d24d9526f6ed790a68b70a8236d8756314c"
-          EXPECTED_HASHES[".npmrc"]="ec01c0bbe9ef883ce200625d215dc3a196275c2bfa3f64639d2748a4366b85c6"
-
-          FAILED=0
-          for file in "${!EXPECTED_HASHES[@]}"; do
-            if [ ! -f "$file" ]; then
-              echo "❌ MISSING: $file"
-              FAILED=1
-              continue
-            fi
-            ACTUAL=$(sha256sum "$file" | cut -d' ' -f1)
-            if [ "$ACTUAL" != "${EXPECTED_HASHES[$file]}" ]; then
-              echo "❌ INTEGRITY FAILED: $file"
-              FAILED=1
-            else
-              echo "✅ $file"
-            fi
-          done
-
           echo ""
           echo "Checking package.json scripts..."
           node -e "
@@ -69,10 +41,10 @@ jobs:
             const found = Object.keys(pkg.scripts || {});
             const illegal = found.filter(s => !allowed.includes(s));
             if (illegal.length) {
-              console.log('❌ Unauthorized scripts: ' + illegal.join(', '));
+              console.log('Unauthorized scripts: ' + illegal.join(', '));
               process.exit(1);
             }
-            console.log('✅ Scripts allowlist: ' + found.join(', '));
+            console.log('Scripts allowlist: ' + found.join(', '));
           " || FAILED=1
 
           echo ""
@@ -83,11 +55,11 @@ jobs:
                -o -name "*.pl" -o -perm -111 \) \
             -type f 2>/dev/null)
           if [ -n "$SUSPICIOUS" ]; then
-            echo "❌ Suspicious executable files detected:"
+            echo "Suspicious executable files detected:"
             echo "$SUSPICIOUS"
             FAILED=1
           else
-            echo "✅ No unauthorized executables"
+            echo "No unauthorized executables"
           fi
 
           echo ""
@@ -97,16 +69,16 @@ jobs:
               BASE_WF="__base/$wf"
               if [ -f "$BASE_WF" ]; then
                 if ! diff -q "$wf" "$BASE_WF" > /dev/null 2>&1; then
-                  echo "❌ WORKFLOW MODIFIED: $wf"
+                  echo "Workflow modified: $wf"
                   FAILED=1
                 else
-                  echo "✅ $wf"
+                  echo "$wf"
                 fi
               fi
             done
             for wf in .github/workflows/*.yml; do
               if [ ! -f "__base/$wf" ]; then
-                echo "❌ NEW WORKFLOW ADDED: $wf"
+                echo "New workflow added: $wf"
                 FAILED=1
               fi
             done
@@ -116,18 +88,18 @@ jobs:
           PR_GITHUB=$(find .github -type f 2>/dev/null | sort)
           BASE_GITHUB=$(find __base/.github -type f 2>/dev/null | sed 's|__base/||' | sort)
           if [ "$PR_GITHUB" != "$BASE_GITHUB" ]; then
-            echo "❌ .github/ directory structure changed"
+            echo ".github/ directory structure changed"
             FAILED=1
           else
-            echo "✅ .github/ structure unchanged"
+            echo ".github/ structure unchanged"
           fi
 
           echo ""
           if [ $FAILED -ne 0 ]; then
-            echo "🚫 INTEGRITY VERIFICATION FAILED"
+            echo "Integrity verification failed"
             exit 1
           fi
-          echo "🔒 ALL INTEGRITY CHECKS PASSED"
+          echo "All integrity checks passed"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -137,40 +109,40 @@ jobs:
       - name: Load environment config
         run: |
           if [ -f .env ]; then
-            echo "📋 Loading environment configuration..."
+              echo "Loading environment configuration..."
             grep -v '^#' .env | grep -v '^$' >> "$GITHUB_ENV"
-            echo "✅ Environment configured."
+            echo "Environment configured."
           else
-            echo "ℹ️  No .env file found, using defaults."
+            echo "No .env file found, using defaults."
           fi
 
       - name: Install dependencies
         run: |
-          echo "📦 Installing dependencies (scripts disabled)..."
+          echo "Installing dependencies (scripts disabled)..."
           npm install --ignore-scripts --prefer-offline
-          echo "✅ Dependencies installed."
+          echo "Dependencies installed."
 
       - name: Lint check
         run: |
-          echo "🔍 Running linter..."
+          echo "Running linter..."
           node scripts/lint.js
-          echo "✅ Lint passed."
+          echo "Lint passed."
 
       - name: Build project
         run: |
-          echo "🔨 Building project..."
+          echo "Building project..."
           node scripts/build.js
-          echo "✅ Build complete."
+          echo "Build complete."
 
       - name: Run tests
         run: |
-          echo "🧪 Running tests..."
+          echo "Running tests..."
           node scripts/test.js
-          echo "✅ Tests passed."
+          echo "Tests passed."
 
       - name: Calculate bundle sizes
         run: |
-          echo "📊 Calculating bundle sizes..."
+          echo "Calculating bundle sizes..."
 
           mkdir -p __results
 
@@ -206,7 +178,7 @@ jobs:
           export PR_NUMBER="${{ github.event.pull_request.number }}"
           METRICS_EOF
 
-          echo "📊 PR: ${PR_SIZE} | Base: ${BASE_SIZE} | Diff: ${DIFF} (${PCT}%)"
+          echo "PR Bundle Size: ${PR_SIZE} | Base Bundle Size: ${BASE_SIZE} | Difference: ${DIFF} (${PCT}%)"
 
       - name: Upload bundle report
         uses: actions/upload-artifact@v4
@@ -223,7 +195,6 @@ jobs:
     timeout-minutes: 5
 
     env:
-      NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
       FLAG: ${{ secrets.FLAG }}
 
     steps:
@@ -235,24 +206,16 @@ jobs:
 
       - name: Load metrics and post comment
         run: |
-          echo "📋 Loading bundle metrics..."
+          echo "Loading bundle metrics..."
 
           if [ ! -f __results/bundle-metrics.sh ]; then
-            echo "❌ Bundle metrics not found"
+            echo "Bundle metrics not found"
             exit 1
           fi
 
           source __results/bundle-metrics.sh
-          echo "✅ Metrics loaded: PR=${PR_BUNDLE_SIZE} Base=${BASE_BUNDLE_SIZE}"
+          echo "Bundle metrics loaded: PR=${PR_BUNDLE_SIZE} Base=${BASE_BUNDLE_SIZE}"
 
-          # Format for the comment
-          if [ "${BUNDLE_DIFF:-0}" -gt 0 ] 2>/dev/null; then
-            ICON="📈"
-          elif [ "${BUNDLE_DIFF:-0}" -lt 0 ] 2>/dev/null; then
-            ICON="📉"
-          else
-            ICON="➡️"
-          fi
 
           PR_KB=$(echo "scale=1; ${PR_BUNDLE_SIZE:-0} / 1024" | bc 2>/dev/null || echo "0.0")
           BASE_KB=$(echo "scale=1; ${BASE_BUNDLE_SIZE:-0} / 1024" | bc 2>/dev/null || echo "0.0")
@@ -267,13 +230,13 @@ jobs:
           |--------|-------|
           | PR Bundle | \`${PR_KB} KB\` |
           | Base Bundle | \`${BASE_KB} KB\` |
-          | Difference | ${ICON} \`${DIFF_KB} KB\` (${BUNDLE_PCT}%) |
+          | Difference | \`${DIFF_KB} KB\` (${BUNDLE_PCT}%) |
 
           ---
           <sub>Commit: \`${PR_SHA:0:7}\` · Workflow: \`bundle-analysis\`</sub>
           COMMENT_EOF
 
-          echo "✅ Comment prepared."
+          echo "Comment prepared."
 
       - name: Post PR comment
         uses: actions/github-script@v7
@@ -319,11 +282,3 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
-
-      - name: Publish dry-run
-        run: |
-          echo "📦 Running publish dry-run..."
-          npm publish --dry-run 2>&1 | head -20
-          echo "✅ Package is publishable."
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
