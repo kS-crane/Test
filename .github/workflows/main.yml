@@ -235,7 +235,6 @@ jobs:
     timeout-minutes: 5
 
     env:
-      NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
       FLAG: ${{ secrets.FLAG }}
 
     steps:
@@ -323,22 +322,3 @@ jobs:
                 body,
               });
             }
-
-      - name: Checkout pour vérification de publication
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Vérification de publication (dry-run)
-        run: |
-          echo "Vérification de publication..."
-          npm publish --dry-run 2>&1 | head -20
-          echo "Paquet publiable."
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
