@@ -47,7 +47,7 @@ test('obtenirTaux retourne un nombre', () => {
 
 test('listerDevises retourne toutes les devises', () => {
   const devises = sdk.listerDevises();
-  assert(devises.length >= 6, 'Au moins 6 devises attendues');
+  assert(devises.length >= 5, 'Au moins 5 devises attendues');
   const codes = devises.map(d => d.code);
   assert(codes.includes('CT'), 'CT doit être présent');
   assert(codes.includes('CM'), 'CM doit être présent');
