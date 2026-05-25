@@ -1,9 +1,8 @@
 {
-  "name": "@banque-stellaire/taux-change",
+  "name": "@banque-centrale-galactique/taux-change",
   "version": "3.2.1",
-  "description": "SDK de conversion de devises interplanétaires pour le réseau Banque Stellaire",
-  "author": "Banque Stellaire S.A. <dev@banque-stellaire.space>",
-  "license": "MIT",
+  "description": "SDK de conversion de devises interplanétaires pour le réseau Banque Centrale Galactique",
+  "author": "Banque Centrale Galactique <dev@banque-centrale-galactique.space>",
   "main": "dist/index.js",
   "scripts": {
     "build": "node scripts/build.js",
@@ -15,7 +14,8 @@
   },
   "keywords": [
     "banque",
-    "stellaire",
+    "centrale",
+    "galactique",
     "taux",
     "change",
     "interplanétaire",

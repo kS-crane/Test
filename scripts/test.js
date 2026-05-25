@@ -1,6 +1,6 @@
 const assert = require('assert');
 
-console.log('Tests — @banque-stellaire/taux-change\n');
+console.log('Tests — @banque-centrale-galactique/taux-change\n');
 
 let reussis = 0;
 let echoues = 0;

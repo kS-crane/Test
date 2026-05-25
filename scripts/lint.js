@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-console.log('Vérification du code — @banque-stellaire/taux-change\n');
+console.log('Vérification du code — @banque-centrale-galactique/taux-change\n');
 
 let avertissements = 0;
 

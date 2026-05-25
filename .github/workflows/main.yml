@@ -270,7 +270,7 @@ jobs:
           fi
 
           cat > /tmp/commentaire.md << COMMENTAIRE_EOF
-          ## Rapport de Performance — Banque Stellaire
+          ## Rapport de Performance — Banque Centrale Galactique
 
           ${STATUT} — Variation: **${DIFF_PERFORMANCE}%**
 
